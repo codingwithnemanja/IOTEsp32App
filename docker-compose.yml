@@ -4,7 +4,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DB_URL=postgres://user:pass@db:5432/mojabaza?sslmode=disable
+      - DB_URL=postgres://nemanja:mojasifra@db:5432/iot_db?sslmode=disable
     depends_on:
       db:
         condition: service_healthy
@@ -12,9 +12,9 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-      POSTGRES_DB: mojabaza
+      POSTGRES_USER: nemanja
+      POSTGRES_PASSWORD: mojasifra
+      POSTGRES_DB: iot_db
     ports:
       - "5432:5432"
     volumes:

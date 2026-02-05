@@ -25,7 +25,7 @@ type Stats struct {
 func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://user:pass@db:5432/mojabaza?sslmode=disable"
+		dbURL = "postgres://nemanja:mojasifra@db:5432/iot_db?sslmode=disable"
 	}
 
 	conn, err := pgx.Connect(context.Background(), dbURL)
