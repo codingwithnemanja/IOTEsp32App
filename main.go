@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -28,12 +29,26 @@ func main() {
 		dbURL = "postgres://nemanja:mojasifra@db:5432/iot_db?sslmode=disable"
 	}
 
-	conn, err := pgx.Connect(context.Background(), dbURL)
+	var conn *pgx.Conn
+	var err error
+
+	fmt.Println("Povezivanje na bazu...")
+	for i := 0; i < 10; i++ {
+		conn, err = pgx.Connect(context.Background(), dbURL)
+		if err == nil {
+			break
+		}
+		fmt.Printf("Baza još nije spremna (pokušaj %d/10)... \n", i+1)
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Greska: %v\n", err)
 		os.Exit(1)
 	}
 	defer conn.Close(context.Background())
+
+	fmt.Println("USPEH: Povezan na PostgreSQL bazu!")
 
 	conn.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS logovi (
        id SERIAL PRIMARY KEY, 
@@ -61,7 +76,6 @@ func main() {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Zadnjih 10 logova
 		rows, _ := conn.Query(context.Background(), "SELECT temperatura, device_id, TO_CHAR(vreme, 'HH24:MI:SS') FROM logovi ORDER BY id DESC LIMIT 10")
 		var logs []Log
 		zadnjaTemp := "--"
@@ -80,7 +94,6 @@ func main() {
 		}
 
 		var st Stats
-		// statistika za danas
 		conn.QueryRow(context.Background(), `
           SELECT 
              COALESCE(ROUND(AVG(NULLIF(regexp_replace(temperatura, '[^0-9.]', '', 'g'), '')::numeric), 2)::text, '--'),
@@ -126,8 +139,6 @@ func main() {
              <a href="/control?color=Crvena" class="btn btn-red">Crvena</a>
              <a href="/control?color=Off" class="btn btn-off">Off</a>
           </div>
-          
-
           <div class="container">
              <div class="box">
                 <h3>Dnevni Izvestaj</h3>
@@ -153,5 +164,6 @@ func main() {
 			St     Stats
 		}{logs, zadnjaTemp, st})
 	})
+
 	http.ListenAndServe(":8080", nil)
 }
