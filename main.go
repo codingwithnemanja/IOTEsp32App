@@ -74,7 +74,7 @@ func main() {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		rows, err := dbPool.Query(context.Background(), "SELECT temperatura, device_id, TO_CHAR(vreme, 'HH:MI') FROM logovi ORDER BY id DESC LIMIT 10")
+		rows, err := dbPool.Query(context.Background(), "SELECT temperatura, device_id, TO_CHAR(vreme, 'HH:MI:SS') FROM logovi ORDER BY id DESC LIMIT 10")
 		if err == nil {
 			defer rows.Close()
 		}
@@ -108,38 +108,38 @@ func main() {
        <html lang="sr">
        <head>
           <meta charset="UTF-8">
-          <title>IoT Panel</title>
+          <title>IoT Control</title>
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
           <style>
              :root { --primary: #6366f1; --bg: #0f172a; --card: #1e293b; --text: #f8fafc; }
-             body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-             .dashboard { max-width: 800px; width: 100%; }
-             .header { text-align: left; margin-bottom: 30px; border-left: 4px solid var(--primary); padding-left: 15px; }
+             body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+             .dashboard { max-width: 800px; width: 100%; margin-top: 10px; }
              
-             .main-card { background: var(--card); padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); margin-bottom: 20px; position: relative; overflow: hidden; }
-             .main-temp { font-size: 80px; font-weight: 800; background: linear-gradient(to right, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 10px 0; }
+             .main-card { background: var(--card); padding: 25px; border-radius: 24px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05); }
+             .main-temp { font-size: 72px; font-weight: 800; color: #fff; text-shadow: 0 0 20px rgba(99,102,241,0.3); margin: 10px 0; }
              
-             .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
-             .stat-card { background: var(--card); padding: 20px; border-radius: 15px; text-align: center; }
-             .stat-label { font-size: 12px; text-transform: uppercase; color: #94a3b8; letter-spacing: 1px; }
-             .stat-val { font-size: 20px; font-weight: bold; margin-top: 5px; display: block; }
+             .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+             .stat-card { background: var(--card); padding: 15px; border-radius: 16px; text-align: center; border: 1px solid rgba(255,255,255,0.03); }
+             .stat-label { font-size: 10px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; }
+             .stat-val { font-size: 16px; font-weight: bold; margin-top: 4px; display: block; }
 
              .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 25px; }
-             .btn { padding: 15px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; text-decoration: none; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.3s; font-size: 14px; }
-             .btn-bela { background: #64748b; } .btn-zelena { background: #22c55e; }
-             .btn-crvena { background: #ef4444; } .btn-off { background: #334155; }
-             .btn:hover { opacity: 0.8; transform: translateY(-2px); }
+             .btn { padding: 14px; border-radius: 14px; border: none; font-weight: bold; cursor: pointer; text-decoration: none; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; font-size: 14px; }
+             .btn-bela { background: #475569; } .btn-zelena { background: #16a34a; }
+             .btn-crvena { background: #dc2626; } .btn-off { background: #1e293b; border: 1px solid #334155; }
+             .btn:active { transform: scale(0.96); }
 
-             .history { background: var(--card); border-radius: 20px; padding: 20px; overflow-x: auto; }
-             table { width: 100%; border-collapse: collapse; min-width: 400px; }
-             th { text-align: left; color: #94a3b8; font-size: 12px; padding: 10px; border-bottom: 1px solid #334155; }
-             td { padding: 12px 10px; border-bottom: 1px solid #334155; font-size: 14px; }
+             .history { background: var(--card); border-radius: 24px; padding: 20px; border: 1px solid rgba(255,255,255,0.03); }
+             table { width: 100%; border-collapse: collapse; }
+             th { text-align: left; color: #64748b; font-size: 11px; padding: 12px 8px; text-transform: uppercase; }
+             td { padding: 12px 8px; border-bottom: 1px solid #334155; font-size: 13px; }
+             .mac-tag { font-family: monospace; background: #0f172a; padding: 4px 8px; border-radius: 6px; color: #818cf8; font-size: 11px; }
              
-             @media (max-width: 600px) {
-                body { padding: 10px; }
-                .main-temp { font-size: 60px; }
-                .controls { grid-template-columns: repeat(2, 1fr); }
+             @media (max-width: 500px) {
+                .main-temp { font-size: 56px; }
+                .grid { grid-template-columns: 1fr 1fr 1fr; }
+                .stat-val { font-size: 14px; }
              }
           </style>
           <script>
@@ -148,7 +148,7 @@ func main() {
                    let doc = new DOMParser().parseFromString(html, 'text/html');
                    document.querySelector('.main-card').innerHTML = doc.querySelector('.main-card').innerHTML;
                    document.querySelector('.grid').innerHTML = doc.querySelector('.grid').innerHTML;
-                   document.querySelector('.history').innerHTML = doc.querySelector('.history').innerHTML;
+                   document.querySelector('tbody').innerHTML = doc.querySelector('tbody').innerHTML;
                 });
              }
              setInterval(update, 3000);
@@ -156,49 +156,43 @@ func main() {
        </head>
        <body>
           <div class="dashboard">
-             <div class="header">
-                <h1 style="margin:0; font-size: 24px;">Smart Home Hub</h1>
-                <span style="color: #94a3b8; font-size: 14px;">Live monitoring sistema</span>
+             <div class="main-card">
+                <div class="stat-label">Očitana Temperatura</div>
+                <div class="main-temp">{{.Zadnja}}</div>
+                <div style="color: #22c55e; font-size: 12px;"><i class="fas fa-check-circle"></i> Sistem je online</div>
              </div>
 
-             <div class="main-card">
-                <div class="stat-label">Trenutna Temperatura</div>
-                <div class="main-temp">{{.Zadnja}}</div>
-                <div style="color: #22c55e;"><i class="fas fa-circle" style="font-size: 8px;"></i> Aktivan uređaj</div>
+             <div class="grid">
+                <div class="stat-card">
+                   <div class="stat-label">Prosek</div>
+                   <span class="stat-val" style="color: #818cf8;">{{.St.Avg}}</span>
+                </div>
+                <div class="stat-card">
+                   <div class="stat-label">Min</div>
+                   <span class="stat-val" style="color: #38bdf8;">{{.St.Min}}</span>
+                </div>
+                <div class="stat-card">
+                   <div class="stat-label">Max</div>
+                   <span class="stat-val" style="color: #f87171;">{{.St.Max}}</span>
+                </div>
              </div>
 
              <div class="controls">
                 <a href="/control?color=Bela" class="btn btn-bela"><i class="fas fa-lightbulb"></i> Bela</a>
                 <a href="/control?color=Zelena" class="btn btn-zelena"><i class="fas fa-leaf"></i> Zelena</a>
                 <a href="/control?color=Crvena" class="btn btn-crvena"><i class="fas fa-fire"></i> Crvena</a>
-                <a href="/control?color=Off" class="btn btn-off"><i class="fas fa-power-off"></i> Isključi</a>
-             </div>
-
-             <div class="grid">
-                <div class="stat-card">
-                   <div class="stat-label">Prosek (Dan)</div>
-                   <span class="stat-val" style="color: #818cf8;">{{.St.Avg}}°C</span>
-                </div>
-                <div class="stat-card">
-                   <div class="stat-label">Najniža</div>
-                   <span class="stat-val" style="color: #38bdf8;">{{.St.Min}}</span>
-                </div>
-                <div class="stat-card">
-                   <div class="stat-label">Najviša</div>
-                   <span class="stat-val" style="color: #f87171;">{{.St.Max}}</span>
-                </div>
+                <a href="/control?color=Off" class="btn btn-off"><i class="fas fa-power-off"></i> Off</a>
              </div>
 
              <div class="history">
-                <h3 style="margin-top:0; font-size: 16px;"><i class="fas fa-history"></i> Poslednja očitanja</h3>
-                <table>
+                <table id="logs-table">
                    <thead>
-                      <tr><th>Uređaj</th><th>Vrednost</th><th>Vreme</th></tr>
+                      <tr><th>MAC Adresa</th><th>Temp</th><th>Vreme</th></tr>
                    </thead>
                    <tbody>
                       {{range .Logs}}
                       <tr>
-                         <td><code style="background:#334155; padding:3px 6px; border-radius:4px;">{{.DeviceID}}</code></td>
+                         <td><span class="mac-tag">{{.DeviceID}}</span></td>
                          <td style="font-weight:bold;">{{.Temp}}</td>
                          <td style="color:#94a3b8;">{{.Vreme}}</td>
                       </tr>
