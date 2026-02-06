@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Log struct {
@@ -23,20 +23,23 @@ type Stats struct {
 	Max string
 }
 
+var dbPool *pgxpool.Pool
+
 func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		dbURL = "postgres://nemanja:mojasifra@db:5432/iot_db?sslmode=disable"
 	}
 
-	var conn *pgx.Conn
 	var err error
-
-	fmt.Println("Povezivanje na bazu...")
+	fmt.Println("Povezivanje na Pool...")
 	for i := 0; i < 10; i++ {
-		conn, err = pgx.Connect(context.Background(), dbURL)
+		dbPool, err = pgxpool.New(context.Background(), dbURL)
 		if err == nil {
-			break
+			err = dbPool.Ping(context.Background())
+			if err == nil {
+				break
+			}
 		}
 		fmt.Printf("Baza još nije spremna (pokušaj %d/10)... \n", i+1)
 		time.Sleep(2 * time.Second)
@@ -46,11 +49,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Greska: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close(context.Background())
+	defer dbPool.Close()
 
-	fmt.Println("USPEH: Povezan na PostgreSQL bazu!")
+	fmt.Println("USPEH: Povezan na Pool!")
 
-	conn.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS logovi (
+	dbPool.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS logovi (
        id SERIAL PRIMARY KEY, 
        temperatura TEXT, 
        device_id TEXT, 
@@ -60,26 +63,30 @@ func main() {
 		temp := r.URL.Query().Get("temp")
 		mac := r.URL.Query().Get("mac")
 		if temp != "" {
-			conn.Exec(context.Background(), "INSERT INTO logovi (temperatura, device_id) VALUES ($1, $2)", temp+"C", mac)
+			dbPool.Exec(context.Background(), "INSERT INTO logovi (temperatura, device_id) VALUES ($1, $2)", temp+"C", mac)
 		}
 		var zadnja string
-		conn.QueryRow(context.Background(), "SELECT device_id FROM logovi WHERE temperatura = 'Komanda' ORDER BY id DESC LIMIT 1").Scan(&zadnja)
+		dbPool.QueryRow(context.Background(), "SELECT device_id FROM logovi WHERE temperatura = 'Komanda' ORDER BY id DESC LIMIT 1").Scan(&zadnja)
 		fmt.Fprint(w, zadnja)
 	})
 
 	http.HandleFunc("/control", func(w http.ResponseWriter, r *http.Request) {
 		boja := r.URL.Query().Get("color")
 		if boja != "" {
-			conn.Exec(context.Background(), "INSERT INTO logovi (temperatura, device_id) VALUES ($1, $2)", "Komanda", boja)
+			dbPool.Exec(context.Background(), "INSERT INTO logovi (temperatura, device_id) VALUES ($1, $2)", "Komanda", boja)
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		rows, _ := conn.Query(context.Background(), "SELECT temperatura, device_id, TO_CHAR(vreme, 'HH24:MI:SS') FROM logovi ORDER BY id DESC LIMIT 10")
+		rows, err := dbPool.Query(context.Background(), "SELECT temperatura, device_id, TO_CHAR(vreme, 'HH24:MI:SS') FROM logovi ORDER BY id DESC LIMIT 10")
+		if err == nil {
+			defer rows.Close()
+		}
+
 		var logs []Log
 		zadnjaTemp := "--"
-		for rows.Next() {
+		for rows != nil && rows.Next() {
 			var l Log
 			rows.Scan(&l.Temp, &l.DeviceID, &l.Vreme)
 			logs = append(logs, l)
@@ -94,12 +101,12 @@ func main() {
 		}
 
 		var st Stats
-		conn.QueryRow(context.Background(), `
+		dbPool.QueryRow(context.Background(), `
           SELECT 
              COALESCE(ROUND(AVG(NULLIF(regexp_replace(temperatura, '[^0-9.]', '', 'g'), '')::numeric), 2)::text, '--'),
              COALESCE(MIN(temperatura), '--'),
              COALESCE(MAX(temperatura), '--')
-          FROM logovi WHERE vreme >= CURRENT_DATE AND temperatura != 'Komanda'`).Scan(&st.Avg, &st.Min, &st.Max)
+          FROM logovi WHERE temperatura != 'Komanda'`).Scan(&st.Avg, &st.Min, &st.Max)
 
 		tmpl := `
        <!DOCTYPE html>
@@ -141,7 +148,7 @@ func main() {
           </div>
           <div class="container">
              <div class="box">
-                <h3>Dnevni Izvestaj</h3>
+                <h3>Analitika (Svi podaci)</h3>
                 <p>Prosek: <span class="stat-val">{{.St.Avg}}C</span></p>
                 <p>Min: <span class="stat-val">{{.St.Min}}</span> | Max: <span class="stat-val">{{.St.Max}}</span></p>
              </div>
