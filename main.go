@@ -32,7 +32,6 @@ func main() {
 	}
 
 	var err error
-	fmt.Println("Povezivanje na Pool...")
 	for i := 0; i < 10; i++ {
 		dbPool, err = pgxpool.New(context.Background(), dbURL)
 		if err == nil {
@@ -41,17 +40,13 @@ func main() {
 				break
 			}
 		}
-		fmt.Printf("Baza još nije spremna (pokušaj %d/10)... \n", i+1)
 		time.Sleep(2 * time.Second)
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Greska: %v\n", err)
 		os.Exit(1)
 	}
 	defer dbPool.Close()
-
-	fmt.Println("USPEH: Povezan na Pool!")
 
 	dbPool.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS logovi (
        id SERIAL PRIMARY KEY, 
@@ -79,7 +74,7 @@ func main() {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		rows, err := dbPool.Query(context.Background(), "SELECT temperatura, device_id, TO_CHAR(vreme, 'HH24:MI:SS') FROM logovi ORDER BY id DESC LIMIT 10")
+		rows, err := dbPool.Query(context.Background(), "SELECT temperatura, device_id, TO_CHAR(vreme, 'HH:MI') FROM logovi ORDER BY id DESC LIMIT 10")
 		if err == nil {
 			defer rows.Close()
 		}
@@ -103,62 +98,112 @@ func main() {
 		var st Stats
 		dbPool.QueryRow(context.Background(), `
           SELECT 
-             COALESCE(ROUND(AVG(NULLIF(regexp_replace(temperatura, '[^0-9.]', '', 'g'), '')::numeric), 2)::text, '--'),
+             COALESCE(ROUND(AVG(NULLIF(regexp_replace(temperatura, '[^0-9.]', '', 'g'), '')::numeric), 1)::text, '--'),
              COALESCE(MIN(temperatura), '--'),
              COALESCE(MAX(temperatura), '--')
           FROM logovi WHERE temperatura != 'Komanda'`).Scan(&st.Avg, &st.Min, &st.Max)
 
 		tmpl := `
        <!DOCTYPE html>
-       <html>
+       <html lang="sr">
        <head>
-          <title>ESP32 Analitika</title>
+          <meta charset="UTF-8">
+          <title>IoT Panel</title>
           <meta name="viewport" content="width=device-width, initial-scale=1">
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
           <style>
-             body { font-family: Arial; text-align: center; background: #f4f4f4; padding: 10px; }
-             .main-temp { font-size: 60px; font-weight: bold; color: #333; margin: 10px; }
-             .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
-             .box { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); flex: 1; min-width: 300px; max-width: 500px; }
-             .btn { padding: 10px 15px; margin: 5px; text-decoration: none; display: inline-block; border-radius: 5px; color: black; border: 1px solid #ccc; font-weight: bold; }
-             .btn-white { background: white; } .btn-green { background: #4CAF50; color: white; }
-             .btn-red { background: #f44336; color: white; } .btn-off { background: #333; color: white; }
-             table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-             th { background: #eee; }
-             .stat-val { font-size: 20px; font-weight: bold; color: #007bff; }
+             :root { --primary: #6366f1; --bg: #0f172a; --card: #1e293b; --text: #f8fafc; }
+             body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+             .dashboard { max-width: 800px; width: 100%; }
+             .header { text-align: left; margin-bottom: 30px; border-left: 4px solid var(--primary); padding-left: 15px; }
+             
+             .main-card { background: var(--card); padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); margin-bottom: 20px; position: relative; overflow: hidden; }
+             .main-temp { font-size: 80px; font-weight: 800; background: linear-gradient(to right, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 10px 0; }
+             
+             .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+             .stat-card { background: var(--card); padding: 20px; border-radius: 15px; text-align: center; }
+             .stat-label { font-size: 12px; text-transform: uppercase; color: #94a3b8; letter-spacing: 1px; }
+             .stat-val { font-size: 20px; font-weight: bold; margin-top: 5px; display: block; }
+
+             .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 25px; }
+             .btn { padding: 15px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; text-decoration: none; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.3s; font-size: 14px; }
+             .btn-bela { background: #64748b; } .btn-zelena { background: #22c55e; }
+             .btn-crvena { background: #ef4444; } .btn-off { background: #334155; }
+             .btn:hover { opacity: 0.8; transform: translateY(-2px); }
+
+             .history { background: var(--card); border-radius: 20px; padding: 20px; overflow-x: auto; }
+             table { width: 100%; border-collapse: collapse; min-width: 400px; }
+             th { text-align: left; color: #94a3b8; font-size: 12px; padding: 10px; border-bottom: 1px solid #334155; }
+             td { padding: 12px 10px; border-bottom: 1px solid #334155; font-size: 14px; }
+             
+             @media (max-width: 600px) {
+                body { padding: 10px; }
+                .main-temp { font-size: 60px; }
+                .controls { grid-template-columns: repeat(2, 1fr); }
+             }
           </style>
           <script>
              function update() {
                 fetch("/").then(r => r.text()).then(html => {
                    let doc = new DOMParser().parseFromString(html, 'text/html');
-                   document.body.innerHTML = doc.body.innerHTML;
+                   document.querySelector('.main-card').innerHTML = doc.querySelector('.main-card').innerHTML;
+                   document.querySelector('.grid').innerHTML = doc.querySelector('.grid').innerHTML;
+                   document.querySelector('.history').innerHTML = doc.querySelector('.history').innerHTML;
                 });
              }
-             setInterval(update, 5000);
+             setInterval(update, 3000);
           </script>
        </head>
        <body>
-          <h2>Trenutna temperatura:</h2>
-          <div class="main-temp">{{.Zadnja}}</div>
-          <div>
-             <a href="/control?color=Bela" class="btn btn-white">Bela</a>
-             <a href="/control?color=Zelena" class="btn btn-green">Zelena</a>
-             <a href="/control?color=Crvena" class="btn btn-red">Crvena</a>
-             <a href="/control?color=Off" class="btn btn-off">Off</a>
-          </div>
-          <div class="container">
-             <div class="box">
-                <h3>Analitika (Svi podaci)</h3>
-                <p>Prosek: <span class="stat-val">{{.St.Avg}}C</span></p>
-                <p>Min: <span class="stat-val">{{.St.Min}}</span> | Max: <span class="stat-val">{{.St.Max}}</span></p>
+          <div class="dashboard">
+             <div class="header">
+                <h1 style="margin:0; font-size: 24px;">Smart Home Hub</h1>
+                <span style="color: #94a3b8; font-size: 14px;">Live monitoring sistema</span>
              </div>
-             <div class="box">
-                <h3>Zadnjih 10 ocitavanja</h3>
+
+             <div class="main-card">
+                <div class="stat-label">Trenutna Temperatura</div>
+                <div class="main-temp">{{.Zadnja}}</div>
+                <div style="color: #22c55e;"><i class="fas fa-circle" style="font-size: 8px;"></i> Aktivan uređaj</div>
+             </div>
+
+             <div class="controls">
+                <a href="/control?color=Bela" class="btn btn-bela"><i class="fas fa-lightbulb"></i> Bela</a>
+                <a href="/control?color=Zelena" class="btn btn-zelena"><i class="fas fa-leaf"></i> Zelena</a>
+                <a href="/control?color=Crvena" class="btn btn-crvena"><i class="fas fa-fire"></i> Crvena</a>
+                <a href="/control?color=Off" class="btn btn-off"><i class="fas fa-power-off"></i> Isključi</a>
+             </div>
+
+             <div class="grid">
+                <div class="stat-card">
+                   <div class="stat-label">Prosek (Dan)</div>
+                   <span class="stat-val" style="color: #818cf8;">{{.St.Avg}}°C</span>
+                </div>
+                <div class="stat-card">
+                   <div class="stat-label">Najniža</div>
+                   <span class="stat-val" style="color: #38bdf8;">{{.St.Min}}</span>
+                </div>
+                <div class="stat-card">
+                   <div class="stat-label">Najviša</div>
+                   <span class="stat-val" style="color: #f87171;">{{.St.Max}}</span>
+                </div>
+             </div>
+
+             <div class="history">
+                <h3 style="margin-top:0; font-size: 16px;"><i class="fas fa-history"></i> Poslednja očitanja</h3>
                 <table>
-                   <tr><th>Uredjaj (MAC)</th><th>Temp</th><th>Vreme</th></tr>
-                   {{range .Logs}}
-                   <tr><td>{{.DeviceID}}</td><td>{{.Temp}}</td><td>{{.Vreme}}</td></tr>
-                   {{end}}
+                   <thead>
+                      <tr><th>Uređaj</th><th>Vrednost</th><th>Vreme</th></tr>
+                   </thead>
+                   <tbody>
+                      {{range .Logs}}
+                      <tr>
+                         <td><code style="background:#334155; padding:3px 6px; border-radius:4px;">{{.DeviceID}}</code></td>
+                         <td style="font-weight:bold;">{{.Temp}}</td>
+                         <td style="color:#94a3b8;">{{.Vreme}}</td>
+                      </tr>
+                      {{end}}
+                   </tbody>
                 </table>
              </div>
           </div>
